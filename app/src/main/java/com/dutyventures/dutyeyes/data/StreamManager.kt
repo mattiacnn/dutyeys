@@ -1,5 +1,6 @@
 package com.dutyventures.dutyeyes.data
 
+import android.util.Log
 import com.dutyventures.dutyeyes.model.DutyStream
 import com.dutyventures.dutyeyes.model.DutyStreamItem
 import com.orhanobut.hawk.Hawk
@@ -11,7 +12,9 @@ object StreamManager {
     private var streams = listOf<DutyStream>()
 
     fun load() {
-        streams = getLocalStreams()
+        streams = getLocalStreams();
+        Log.e("EyesDuty", "Stream loaded")
+
     }
 
     private fun getLocalStreams(): List<DutyStream> {
@@ -71,6 +74,15 @@ object StreamManager {
         currentStreamId = streams.getOrNull(nextIndex)?.id
         return lastStreamId != currentStreamId
     }
+
+    fun getNextStreamId(): DutyStream? {
+        val currentStream = getCurrentStream()
+
+        val currentIndex = streams.indexOfFirst { it.id == currentStream?.id }
+        val nextIndex = if (currentIndex != -1 && currentIndex < streams.size - 1) currentIndex + 1 else 0
+        return streams.getOrNull(nextIndex)
+    }
+
 
     fun getAllStreamItems(): List<DutyStreamItem> {
         val currentStreamId = getCurrentStream()?.id

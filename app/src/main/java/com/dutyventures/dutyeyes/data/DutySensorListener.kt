@@ -4,8 +4,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 
-open class DutySensorListener : SensorEventListener {
-
+abstract class DutySensorListener : SensorEventListener {
     override fun onSensorChanged(sensorEvent: SensorEvent) {
         rotation(sensorEvent)
     }

@@ -9,6 +9,7 @@ import android.hardware.SensorManager
 import android.os.Bundle
 import android.util.Log
 import android.view.View
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import com.dutyventures.dutyeyes.R
@@ -20,10 +21,19 @@ import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.PlaybackException
 import com.google.android.exoplayer2.Player
+import com.google.android.exoplayer2.source.MediaSource
+import com.google.android.exoplayer2.source.rtsp.RtspMediaSource
 import com.google.android.exoplayer2.util.EventLogger
 import com.google.android.exoplayer2.video.VideoSize
 import com.otaliastudios.zoom.ZoomSurfaceView
 import kotlin.math.abs
+import kotlin.properties.Delegates
+import android.graphics.drawable.ColorDrawable
+import android.view.ViewGroup
+import android.widget.Button
+import com.dutyventures.dutyeyes.ui.DutyStreamAdapter
+import com.google.android.material.floatingactionbutton.FloatingActionButton
+import kotlin.random.Random
 
 
 class ExoStreamActivity : AppCompatActivity(), Player.Listener {
@@ -38,6 +48,7 @@ class ExoStreamActivity : AppCompatActivity(), Player.Listener {
     private lateinit var surface: ZoomSurfaceView
     private lateinit var loading: View
     private lateinit var retry: View
+    private lateinit var fab: FloatingActionButton
 
     private var sensor: Sensor? = null
     private var sensorManager: SensorManager? = null
@@ -78,6 +89,7 @@ class ExoStreamActivity : AppCompatActivity(), Player.Listener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         LOGS = ""
 
         StreamManager.load()
@@ -90,6 +102,9 @@ class ExoStreamActivity : AppCompatActivity(), Player.Listener {
         updateUi()
         setupSurface()
 
+        findViewById<TextView>(R.id.gyro)
+        fab = findViewById<FloatingActionButton>(R.id.floatingActionButton)
+
         // listeners
         findViewById<View>(R.id.settings).setOnClickListener { openSettings() }
         retry.setOnClickListener {
@@ -101,7 +116,7 @@ class ExoStreamActivity : AppCompatActivity(), Player.Listener {
         ShakeDetector.create(
             this
         ) {
-            nextStream()
+            // run functuion here
         }
 
         setupGyro()
@@ -110,13 +125,6 @@ class ExoStreamActivity : AppCompatActivity(), Player.Listener {
     private fun setupGyro() {
         sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager? ?: return
         sensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-    }
-
-    private fun nextStream() {
-        if (StreamManager.nextStream()) {
-            stopPlaying()
-            playCurrentStreamIfNotPlaying()
-        }
     }
 
     private fun openSettings() {
@@ -192,7 +200,11 @@ class ExoStreamActivity : AppCompatActivity(), Player.Listener {
             stopPlaying()
             createExoPlayerInstanceIfNeeded()
             try {
-                player?.setMediaItem(MediaItem.fromUri(stream.url))
+                val mediaSource: MediaSource = RtspMediaSource.Factory().setForceUseRtpTcp(true)
+                    .createMediaSource(MediaItem.fromUri(stream.url))
+
+                player?.setMediaSource(mediaSource)
+
             } catch (e: Exception) {
                 LOGS += "\n${e.stackTraceToString()}"
                 Log.e("DutyEyes", "Eroare", e)
@@ -217,6 +229,20 @@ class ExoStreamActivity : AppCompatActivity(), Player.Listener {
             "EyesDuty",
             " video: ${videoSize.width} x ${videoSize.height} container: ${surface.engine.containerWidth} x ${surface.engine.containerHeight} AND ZOOM = $zoom"
         )
+
+        this.fab.setOnClickListener {
+            val centerWidth = (surface.engine.containerWidth / zoom) / 2
+            val centerHeight = (surface.engine.contentHeight / zoom) / 2
+            surface.engine.moveTo(zoom,-centerWidth ,-centerHeight,true);
+        }
+
+        val loggerTextView = findViewById<TextView>(R.id.logger)
+
+        val contentWidth = surface.engine.containerWidth
+
+        val loggerText = "Content Width: $contentWidth\nZoom: $zoom"
+        loggerTextView.text = loggerText
+
         LOGS += "\nvideo: ${videoSize.width} x ${videoSize.height} container: ${surface.engine.containerWidth} x ${surface.engine.containerHeight} AND ZOOM = $zoom"
     }
 
@@ -236,35 +262,54 @@ class ExoStreamActivity : AppCompatActivity(), Player.Listener {
         LOGS += error.stackTraceToString()
     }
 
+    fun invertSign(number: Float, threshold: Float): Float {
+        var invertedNumber = -number
+        return invertedNumber
+    }
+
     private val sensorListener = object : DutySensorListener() {
+        private var previousY: Float? = null
+
         override fun rotation(sensorEvent: SensorEvent) {
-            val x = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
+             var x = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
                 sensorEvent.values[1] else sensorEvent.values[0]
-            val y = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
+            var y = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
                 sensorEvent.values[0] else sensorEvent.values[1]
-
-//            findViewById<TextView>(R.id.gyro).isVisible = true
-//            findViewById<TextView>(R.id.gyro).text = buildString {
-//                appendLine("Current X: ".plus(currentX))
-//                appendLine("Zoom: ${surface.engine.zoom}")
-//                appendLine("CONTAINER H: ${surface.engine.containerHeight}")
-//                appendLine("CONTENT H: ${surface.engine.contentHeight}")
-//
-//                appendLine("CW: ${surface.engine.containerWidth}")
-//                appendLine("CTW: ${surface.engine.contentWidth}")
-//                appendLine("X: ${sensorEvent.values[0]}")
-//                appendLine("X: ${sensorEvent.values[1]}")
-//                appendLine("X: ${sensorEvent.values[2]}")
-//
-//
-//                appendLine("PAN BY $x and $y ")
-//            }
-
-            if (abs(x.toInt()) == 0 && abs(y.toInt()) == 0) {
-                return
+            var z = sensorEvent.values[2]
+            var invertedZ = z
+            if (x < 0){
+                x=Math.abs(x)
+            }
+            else {
+                x = -x
             }
 
-            surface.engine.panByRelative(x, y)
+            var limit = false;
+            val panY = surface.engine.pan.y
+            var moving = false;
+
+            if (previousY != null) {
+                if (z <= 3.5F && z > 0){
+                    invertedZ = 0.0F
+                    moving = false
+                }
+                else if (y > previousY!!) {
+                    // Movimento dall'alto verso il basso
+                    // Esegui le azioni desiderate
+                    moving = true
+                     invertedZ = 3.0F
+
+                } else if (y < previousY!!) {
+                    // Movimento dal basso verso l'alto
+                    // Esegui le azioni desiderate
+                    moving = true
+                    invertedZ = -3.0F
+                }
+            }
+
+            previousY = z
+
+            surface.engine.panByRelative(x, invertedZ)
         }
     }
 

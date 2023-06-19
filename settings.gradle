@@ -17,5 +17,5 @@ dependencyResolutionManagement {
 rootProject.name = "stream"
 include ':app'
 gradle.ext.exoplayerModulePrefix = 'exoplayer-'
-apply from: file("../ExoPlayer/core_settings.gradle")
+apply from: file("../ExoPlayer-release-v2/core_settings.gradle")
 include ':zoomlayoutlib'
